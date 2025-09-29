@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+
 from getpass import getpass
 from hashlib import sha256
 from monstr.ident.keystore import NamedKeys, FileKeyStore, NIP44KeyDataEncrypter, NIP49KeyDataEncrypter, SQLiteKeyStore
@@ -9,18 +11,20 @@ from monstr.encrypt import Keys
 
 logging.getLogger().setLevel(logging.DEBUG)
 
+HOMEDIR = os.environ.get("HOME", ".")
+
 
 async def get_key() -> str:
     # will block, use aiconsole where it matters
     return getpass('keystore key: ')
 
 
-async def convert_store():
+async def convert_store_fs():
     # load the old data as alias stores it
-    old_file = '/home/monty/.nostrpy/profiles.csv'
+    old_file = f'{HOMEDIR}/.nostrpy/profiles.csv'
 
     # create a new key store and copy name/key maps in
-    new_file = '/home/monty/.nostrpy/keystore2.db'
+    new_file = f'{HOMEDIR}/.nostrpy/keystore2.db'
 
     my_enc = NIP44KeyDataEncrypter(get_password=get_key)
     new_store = FileKeyStore(new_file,
@@ -29,9 +33,17 @@ async def convert_store():
     await new_store.convert_memstore(old_file)
 
 
+async def convert_store_sql():
+    old_store = SQLiteKeyStore(file_name=f'{HOMEDIR}/.nostrpy/keystore.db',
+                               encrypter=NIP44KeyDataEncrypter(password=''))
+    new_store = SQLiteKeyStore(file_name=f'{HOMEDIR}/.nostrpy/keystore2.db',
+                               encrypter=NIP49KeyDataEncrypter(password=''))
+    await SQLiteKeyStore.merge_key_store(old_store, new_store)
+
+
 async def test_store():
     # create a new key store and copy name/key maps in
-    new_file = '/home/monty/.nostrpy/keystore2.db'
+    new_file = f'{HOMEDIR}/.nostrpy/keystore2.db'
 
     my_enc = NIP44KeyDataEncrypter(get_password=get_key)
 
@@ -48,12 +60,6 @@ async def test_store():
     # from monstr.encrypt import Keys
     # await new_store.update(Keys(), 'monty_test')
 
-async def convert_store():
-    old_store = SQLiteKeyStore(file_name='/home/monty/.nostrpy/keystore.db',
-                               encrypter=NIP44KeyDataEncrypter(password=''))
-    new_store = SQLiteKeyStore(file_name='/home/monty/.nostrpy/keystore2.db',
-                               encrypter=NIP49KeyDataEncrypter(password=''))
-    await SQLiteKeyStore.merge_key_store(old_store, new_store)
 
 # Example usage
 if __name__ == "__main__":
@@ -76,7 +82,7 @@ if __name__ == "__main__":
     # decrypted_key = NIP49.decrypt_key(password, encrypted_key)
     # print(f"Decrypted Private Key: {decrypted_key}")
 
-    asyncio.run(convert_store())
+    asyncio.run(convert_store_sql())
 
 # nk = NamedKeys('shaun')
 #

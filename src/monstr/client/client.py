@@ -15,7 +15,7 @@ except:
     pass
 import asyncio
 import json
-from typing import Callable, Union
+from typing import Callable, Union, List, Any, Dict
 from json import JSONDecodeError
 from datetime import datetime
 from monstr.util import util_funcs
@@ -526,40 +526,42 @@ class Client:
 
         return ret
 
-    def subscribe(self, sub_id=None, handlers=None, filters={}, eose_func=None):
+    def subscribe(self, sub_id=None, handlers=None, filters=None, eose_func=None):
         """
-        :param sub_id: if none a rndish 4digit hex sub_id will be given
-        :param handler: single or [] of handlers that'll get called for events on sub
-        :param filters: filter to be sent to relay for matching events were interested in
+        :param sub_id: if none a rnd-ish 4-digit hex sub_id will be given
+        :param handlers: single or [] of handlers that'll get called for events on sub
+        :param filters: filter to be sent to relay for matching events were interested in,
         see https://github.com/fiatjaf/nostr/blob/master/nips/01.md
         :return: sub_id
         """
 
-        the_req = ['REQ']
+        if filters is None:
+            filters = {}
 
-        # no sub given, ok we'll generate one
+        _req : List[Any] = ['REQ']
+
+        # no sub given, so we'll generate one
         if sub_id is None:
             sub_id = util_funcs.get_rnd_hex_str(4)
-        the_req.append(sub_id)
-        if isinstance(filters, dict):
-            filters = [filters]
-        the_req = the_req + filters
+        _req.append(sub_id)
 
-        the_req = json.dumps(the_req)
+        _req.extend([filters] if isinstance(filters, dict) else filters)
+
+        the_req = json.dumps(_req)
         logging.debug(f'Client::subscribe - {the_req}')
 
-        # make sure handler is list
+        # make sure handler is a list
         if handlers is None:
             handlers = []
         # added ClientPool else we end up itering over Clients and thinking they're handlers!
         elif not hasattr(handlers, '__iter__') or isinstance(handlers, ClientPool):
             handlers = [handlers]
 
-        # if same id already exists its just overidden
+        # if the same id already exists, it's just overridden
         self._subs[sub_id] = {
             'handlers': handlers,
-            # confusingly this is false whilst we're doing the eose and is set true once its done
-            # anyway, if no eose func or self._on_eose then it'll be set True straight away
+            # confusingly, this is false whilst we're doing the eose and is set true once it's done
+            # anyway, if no eose func or self._on_eose then it'll be set True straight away,
             # and we go straight to events coming in as received
             'is_eose': eose_func is None and self._on_eose is None,
             'eose_func': eose_func,

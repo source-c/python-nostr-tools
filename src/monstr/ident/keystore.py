@@ -3,6 +3,8 @@ from abc import ABC, abstractmethod
 import csv
 import logging
 from hashlib import sha256
+from typing import Callable, Awaitable, List
+
 from monstr.encrypt import NIP44Encrypt, Keys, Encrypter, NIP49
 from monstr.db.db import ASQLiteDatabase
 from monstr.ident.persist import MemoryProfileStore
@@ -20,6 +22,7 @@ class NamedKeys(ABC, Keys):
               this will probably be easy by not subclassing Keys but just holding are own key obj
               then added the methods we need.
     """
+
     def __init__(self, name: str, priv_k: str = None, pub_k: str = None):
         self._name = name
         super().__init__(priv_k, pub_k)
@@ -50,8 +53,8 @@ class NamedKeys(ABC, Keys):
 class KeyDataEncrypter:
 
     def __init__(self,
-                 get_password: callable = None,
-                 password: str = None):
+                 get_password: Callable[[], Awaitable[str]] | None = None,
+                 password: str | None = None):
         self._get_password = get_password
         self._password: str = password
 
@@ -80,6 +83,7 @@ class NIP44KeyDataEncrypter(KeyDataEncrypter):
         maybe better if you're expecting to have large keystore as it'll decrypt quicker
         (better would be to change the select method so that decrypt can happen as needed...)
     """
+
     def __init__(self,
                  get_password: callable = None,
                  password: str = None
@@ -123,6 +127,7 @@ class NIP49KeyDataEncrypter(KeyDataEncrypter):
     """
         this is probably the key encryptor you should use
     """
+
     def __init__(self,
                  get_password: callable = None,
                  password: str = None
@@ -206,6 +211,7 @@ class KeystoreInterface(ABC):
     """
         if k is Keys then the name arg is required
     """
+
     @abstractmethod
     async def add(self, k: Keys | NamedKeys, name: str = None) -> NamedKeys:
         """
@@ -234,7 +240,7 @@ class KeystoreInterface(ABC):
         """
 
     @abstractmethod
-    async def select(self, filter: list | dict = None) -> [NamedKeys]:
+    async def select(self, filter: list | dict = None) -> List[NamedKeys]:
         """
             select op on the store if the filter is None then return all keys
             for now keep this:
@@ -252,6 +258,7 @@ class FileKeyStore(KeystoreInterface):
         Keystore interface implemented using a file -
         doubt we'd ever use this in pratice, safer just to use the sqlite version
     """
+
     def __init__(self,
                  file_name: str,
                  encrypter: KeyDataEncrypter = None):
@@ -278,7 +285,7 @@ class FileKeyStore(KeystoreInterface):
 
         return ret
 
-    async def select(self, filter: list | dict = None) -> [NamedKeys]:
+    async def select(self, filter: list | dict = None) -> List[NamedKeys]:
         # make sure store is loaded
         await self._init_store()
         ret = [self._store[k] for k in self._store.keys()]
@@ -384,6 +391,7 @@ class SQLiteKeyStore(KeystoreInterface):
     """
         Keystore interface implemented using a sqlite use this
     """
+
     def __init__(self,
                  file_name: str,
                  encrypter: KeyDataEncrypter = None):
@@ -433,7 +441,7 @@ class SQLiteKeyStore(KeystoreInterface):
 
         return ret
 
-    async def select(self, filter: list | dict = None) -> [NamedKeys]:
+    async def select(self, filter: list | dict = None) -> List[NamedKeys]:
         # at the moment the filter is ignored and this just returns everything
 
         # make sure store is loaded
@@ -492,4 +500,3 @@ class SQLiteKeyStore(KeystoreInterface):
             raise KeyStoreException(f'SQLiteKeyStore::delete: {e}')
 
         return ret
-
