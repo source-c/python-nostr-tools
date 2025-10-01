@@ -1,9 +1,10 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
-	from monstr.event.persist import ClientEventStoreInterface
+    from monstr.event.persist import ClientEventStoreInterface
 """
-    abstract some of the functionality we need in order to messages between people other monstr protocal
+    abstract some of the functionality we need in order to messages between people other monstr protocol
 
     todo
             1-1 unencrypted
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 
 import base64
 import logging
-# from gevent.lock import BoundedSemaphore
+import threading
 from monstr.ident.profile import Profile
 from monstr.client.client import Client
 from monstr.event.event import Event
@@ -26,16 +27,17 @@ from monstr.encrypt import NIP4Encrypt
 
 class MessageThreads:
     """
-        keep a track of all 1-1 message for from_p
+        keep track of all 1-1 messages for from_p
         if evt_store is given then
 
     """
+
     def __init__(self,
                  from_p: Profile,
                  evt_store: ClientEventStoreInterface,
                  on_message=None,
                  to_pub_k=None,
-                 kinds=[Event.KIND_TEXT_NOTE]):
+                 kinds=None):
         """
 
         :param from_p:
@@ -44,6 +46,8 @@ class MessageThreads:
         :param to_pub_k:
         :param kinds:
         """
+        if kinds is None:
+            kinds = [Event.KIND_TEXT_NOTE]
         self._from = from_p
 
         if not to_pub_k:
@@ -57,9 +61,9 @@ class MessageThreads:
 
         # record of messages we've seen by eventid
         self._msg_lookup = set()
-        # lock for above so we can prevent duplicates, for example
+        # lock for above so we can prevent duplicates, for instance,
         # we'll see the same event multiple times if we're attached to multiple relays
-        # self._msg_lookup_lock = BoundedSemaphore()
+        self._msg_lookup_lock = threading.Lock()
 
         self._evt_store = evt_store
 
@@ -98,7 +102,7 @@ class MessageThreads:
     def _add_msg(self, msg_evt):
         p_tags = msg_evt.p_tags
 
-        # we've already seen this event either from local store or previous sub recieved
+        # we've already seen this event either from the local store or previous sub received,
         # or it's not 1-1 msg
         with self._msg_lookup_lock:
             if msg_evt.id in self._msg_lookup or len(p_tags) < 1 or len(p_tags) > 2:
@@ -116,7 +120,7 @@ class MessageThreads:
 
         if to_id not in self._msg_threads:
             """
-                seperate store for the different types of notes, dict as we might in future add unread count etc.
+                separate store for the different types of notes, dict as we might in future add unread count etc.
             """
             self._msg_threads[to_id] = {
                 Event.KIND_TEXT_NOTE: {
@@ -128,16 +132,21 @@ class MessageThreads:
             }
 
         if msg_evt.kind == Event.KIND_ENCRYPT:
-            # we keep in memory unecrypted, probably we should decrypt at the point
-            # we're outputing to screen
+            # we keep in memory unencrypted, probably we should decrypt at the point
+            # we're outputting to screen
             msg_copy = Event.load(msg_evt.data())
             try:
 
                 msg_copy.content = msg_evt.decrypted_content(self._from.private_key, to_id)
 
             except Exception as e:
-                msg_copy.content = '!!!unable to decrypt!!!'
-        self._msg_threads[to_id][msg_evt.kind]['msgs'].append(msg_copy)
+
+                # Keep the original encrypted content when decryption fails
+                # This allows for retry later or displaying the raw encrypted data
+                logging.warning(f'Failed to decrypt message {msg_evt.id}: {e}')
+                msg_copy.content = msg_evt.content
+
+            self._msg_threads[to_id][msg_evt.kind]['msgs'].append(msg_copy)
 
         return True
 
@@ -152,9 +161,10 @@ class MessageThreads:
                      text,
                      kind=Event.KIND_TEXT_NOTE):
         """
+        :param the_client:
         :param from_user:
         :param to_user:
-        :param msg:
+        :param text:
         :param kind:
         :return:
         """
@@ -162,7 +172,7 @@ class MessageThreads:
 
         # # encrypt text as NIP4 if encrypted kind
         if kind == Event.KIND_ENCRYPT:
-            # as decrypt add this as event method
+            # as decrypt adds this as an event method
             my_enc = NIP4Encrypt(self._from.private_key)
             my_enc.get_echd_key_hex(to_user.public_key)
             # crypt_message = my_enc.encrypt_message(b'a very simple message to test encrypt')

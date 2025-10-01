@@ -7,7 +7,8 @@
 from __future__ import annotations
 import hashlib
 import inspect
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
+
 if TYPE_CHECKING:
     from monstr.ident.event_handlers import ProfileEventHandlerInterface
     from monstr.client.client import Client
@@ -31,7 +32,7 @@ class EventAccepter(ABC):
                      the_client: Client,
                      sub_id: str,
                      evt: Event) -> bool:
-        'True/False if the event will be accepted'
+        """True/False if the event is accepted"""
 
 
 class DeduplicateAcceptor(EventAccepter):
@@ -112,7 +113,7 @@ class NotOnlyNumbersAcceptor(EventAccepter):
                      the_client: Client,
                      sub_id: str,
                      evt: Event) -> bool:
-        return not evt.content.replace(' ','').isdigit()
+        return not evt.content.replace(' ', '').isdigit()
 
 
 class LengthAcceptor(EventAccepter):
@@ -136,7 +137,7 @@ class LengthAcceptor(EventAccepter):
 
 class EventHandler(ABC):
 
-    def __init__(self, event_acceptors: [EventAccepter] = None):
+    def __init__(self, event_acceptors: List[EventAccepter] = None):
         if event_acceptors is None:
             event_acceptors = []
         elif not hasattr(event_acceptors, '__iter__'):
@@ -168,12 +169,15 @@ class PrintEventHandler(EventHandler):
     """
        basic handler for outputting events
     """
+
     def __init__(self,
-                 event_acceptors=[],
+                 event_acceptors=None,
                  view_on=True,
                  profile_handler: ProfileEventHandlerInterface = None,
                  max_length: int = None):
 
+        if event_acceptors is None:
+            event_acceptors = []
         self._view_on = view_on
         self._profile_handler = profile_handler
         self._max_length = max_length
@@ -218,7 +222,7 @@ class PrintEventHandler(EventHandler):
 
             content = c_evt.content
             if self._max_length and len(content) > self._max_length:
-                content = content[:self._max_length-3]+ '...'
+                content = content[:self._max_length - 3] + '...'
 
             print('%s: %s - %s' % (c_evt.created_at,
                                    util_funcs.str_tails(profile_name, 4),
@@ -228,9 +232,10 @@ class PrintEventHandler(EventHandler):
 class LastEventHandler(EventHandler):
     """
         use to keep track of the last time we received events for a given relay
-        if event_acceptors is given then only accepted events are used to update the time
+        if event_acceptors is given, then only accepted events are used to update the time
     """
-    def __init__(self, event_acceptors: [EventAccepter] = None):
+
+    def __init__(self, event_acceptors: List[EventAccepter] = None):
         super().__init__(event_acceptors=event_acceptors)
         self._url_time_map = {}
 
@@ -268,13 +273,14 @@ class DecryptPrintEventHandler(PrintEventHandler):
         add support for signer interface for decrypting events -
         events would have to be queued and printed
     """
+
     def __init__(self, priv_k, view_on=True):
         self._priv_k = priv_k
         self._nip4_decrypt = NIP4Encrypt(key=priv_k)
-        super(DecryptPrintEventHandler, self).__init__(view_on)
+        super(DecryptPrintEventHandler, self).__init__(view_on=view_on)
 
     def do_event(self, the_client: Client, sub_id, evt: Event):
-        if self._view_on is False:
+        if not self._view_on:
             return
 
         out_event = evt
@@ -285,7 +291,8 @@ class DecryptPrintEventHandler(PrintEventHandler):
 
         self.print(the_client, sub_id, out_event)
 
-    def print(self, the_client: Client, sub_id, evt: Event):
+    @staticmethod
+    def print(the_client: Client, sub_id, evt: Event):
         print(f'{util_funcs.ticks_as_date(evt.created_at)}'
               f'{util_funcs.str_tails(evt.pub_key)}'
               f'{evt.content}')
@@ -317,6 +324,7 @@ class RepostEventHandler(EventHandler):
     to_client, TODO: define interface that both Client and ClientPool share and type hint with that
 
     """
+
     def __init__(self, to_client, max_dedup=1000, event_acceptors=None):
         self._to_client = to_client
         self._duplicates = OrderedDict()
